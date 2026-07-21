@@ -8,15 +8,15 @@ One of three independent microservices:
 |---|---|
 | work-order-service | Customers, vehicles, service catalog, work order lifecycle, saga orchestration |
 | billing-service | Quotes and payments (Mercado Pago) |
-| **execution-service** (this repo) | Parts inventory and stock control, repair execution queue, diagnostics |
+| **execution-service** (this repo) | Parts inventory and stock control, repair execution, diagnostics |
 
-Services communicate through RabbitMQ events (async) and REST (sync, when strictly needed). Each service owns its database — no service touches another service's data store.
+Services communicate through RabbitMQ events (async, over a shared `saga` topic exchange) and REST (sync, only when strictly needed). Each service owns its database — no service touches another service's data store.
 
 ## Stack
 
-- [NestJS 11](https://nestjs.com/) + TypeScript, running as a hybrid application (HTTP + RabbitMQ consumer in a single process)
+- [NestJS 11](https://nestjs.com/) + TypeScript — HTTP API plus a RabbitMQ **message bus** (topic exchange) in a single process
 - [MongoDB](https://www.mongodb.com/) via [Mongoose](https://mongoosejs.com/) — fulfils the challenge's NoSQL requirement
-- RabbitMQ for messaging (saga participant)
+- RabbitMQ for asynchronous messaging (saga participant)
 - Zod for environment validation, class-validator for HTTP DTOs
 - Jest (unit + e2e), Swagger for API docs
 
@@ -32,20 +32,45 @@ This service is a **participant** of the work order saga orchestrated by `work-o
 
 It also exposes `GET /parts?ids=...`, consumed synchronously by `work-order-service` when opening a work order to snapshot part prices.
 
-## Getting started
+## Requirements
 
-Requirements: Node 24+, pnpm 10, Docker.
+Node 24+, pnpm 10, Docker.
+
+## Run this service
 
 ```bash
 pnpm install
 cp .env.example .env
 docker compose up -d          # MongoDB
-pnpm start:dev
+pnpm start:dev                # http://localhost:3002
 ```
 
-- API: `http://localhost:3002`
-- Swagger UI: `http://localhost:3002/docs`
-- Health check: `http://localhost:3002/health`
+| Endpoint | URL |
+|---|---|
+| API | http://localhost:3002 |
+| Swagger UI | http://localhost:3002/docs |
+| Health check | http://localhost:3002/health |
+
+> **RabbitMQ dependency:** this service's `docker-compose.yml` starts **only MongoDB**. The RabbitMQ broker lives in `work-order-service`'s compose and is shared by both services. Start `work-order-service`'s containers (`docker compose up -d` there) before running this service, otherwise the message bus has nothing to connect to. Both services point at `amqp://…@localhost:5672` by default.
+
+The parts REST API (`/parts`, CRUD + `GET /parts?ids=`) works standalone. The saga behaviour (reserve/release/consume) is exercised by messages from `work-order-service` — see the full walkthrough below.
+
+## Run the full system (distributed saga demo)
+
+The end-to-end saga — open a work order → reserve stock here → quote/payment → consume stock here → finish — is documented as a step-by-step walkthrough in the **work-order-service README** ("Run the full system"). In short:
+
+```bash
+# terminal 1 — work-order-service
+docker compose up -d          # Postgres + RabbitMQ (shared broker)
+npx prisma migrate dev
+pnpm start:dev                # port 3000
+
+# terminal 2 — execution-service (this repo)
+docker compose up -d          # MongoDB
+pnpm start:dev                # port 3002
+```
+
+Then create a part here (`POST /parts`), open a work order in work-order-service referencing it, and watch the part's `availableQuantity` / `reservedQuantity` change as the saga reserves and later consumes the stock.
 
 ## Scripts
 
