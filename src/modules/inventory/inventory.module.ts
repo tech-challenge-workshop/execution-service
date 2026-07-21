@@ -17,6 +17,7 @@ import { MongoReservationRepository } from './infra/mongo-reservation.repository
 import { PartDocument, PartSchema } from './infra/part.schema'
 import { ReservationDocument, ReservationSchema } from './infra/reservation.schema'
 import { PartsController } from './presentation/parts.controller'
+import { InventorySagaSubscriber } from './presentation/saga/inventory-saga.subscriber'
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { PartsController } from './presentation/parts.controller'
     ReservePartsUseCase,
     ReleasePartsUseCase,
     ConsumePartsUseCase,
+    InventorySagaSubscriber,
     { provide: PART_REPOSITORY, useClass: MongoPartRepository },
     { provide: RESERVATION_REPOSITORY, useClass: MongoReservationRepository },
   ],
