@@ -1,7 +1,6 @@
 import { InventorySagaSubscriber } from '../../../src/modules/inventory/presentation/saga/inventory-saga.subscriber'
 import { ReservePartsUseCase } from '../../../src/modules/inventory/application/use-cases/reserve-parts.use-case'
 import { ReleasePartsUseCase } from '../../../src/modules/inventory/application/use-cases/release-parts.use-case'
-import { ConsumePartsUseCase } from '../../../src/modules/inventory/application/use-cases/consume-parts.use-case'
 import { SagaMessage } from '../../../src/shared/messaging/saga-messages'
 import type { MessageBus, MessageHandler } from '../../../src/shared/messaging/message-bus'
 
@@ -23,19 +22,16 @@ describe('InventorySagaSubscriber', () => {
   let bus: CapturingBus
   let reserve: jest.Mock
   let release: jest.Mock
-  let consume: jest.Mock
 
   function setup(): void {
     bus = new CapturingBus()
     reserve = jest.fn().mockResolvedValue(undefined)
     release = jest.fn().mockResolvedValue(undefined)
-    consume = jest.fn().mockResolvedValue(undefined)
 
     new InventorySagaSubscriber(
       bus,
       { execute: reserve } as unknown as ReservePartsUseCase,
       { execute: release } as unknown as ReleasePartsUseCase,
-      { execute: consume } as unknown as ConsumePartsUseCase,
     ).onModuleInit()
   }
 
@@ -65,12 +61,5 @@ describe('InventorySagaSubscriber', () => {
   it('releases parts on the release command', async () => {
     await bus.handlers.get(SagaMessage.ReleaseParts)!({ workOrderId: 'wo-1' })
     expect(release).toHaveBeenCalledWith('wo-1')
-  })
-
-  it('consumes parts and replies execution.completed on start', async () => {
-    await bus.handlers.get(SagaMessage.StartExecution)!({ workOrderId: 'wo-1' })
-
-    expect(consume).toHaveBeenCalledWith('wo-1')
-    expect(bus.published).toContain(SagaMessage.ExecutionCompleted)
   })
 })

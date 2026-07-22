@@ -8,7 +8,6 @@ import type {
 } from '../../../../shared/messaging/saga-messages'
 import { ReservePartsUseCase } from '../../application/use-cases/reserve-parts.use-case'
 import { ReleasePartsUseCase } from '../../application/use-cases/release-parts.use-case'
-import { ConsumePartsUseCase } from '../../application/use-cases/consume-parts.use-case'
 
 @Injectable()
 export class InventorySagaSubscriber implements OnModuleInit {
@@ -17,13 +16,11 @@ export class InventorySagaSubscriber implements OnModuleInit {
     private readonly bus: MessageBus,
     private readonly reserveParts: ReservePartsUseCase,
     private readonly releaseParts: ReleasePartsUseCase,
-    private readonly consumeParts: ConsumePartsUseCase,
   ) {}
 
   onModuleInit(): void {
     this.bus.subscribe(SagaMessage.ReserveParts, (payload) => this.onReserveParts(payload))
     this.bus.subscribe(SagaMessage.ReleaseParts, (payload) => this.onReleaseParts(payload))
-    this.bus.subscribe(SagaMessage.StartExecution, (payload) => this.onStartExecution(payload))
   }
 
   private async onReserveParts(payload: Record<string, unknown>): Promise<void> {
@@ -39,11 +36,5 @@ export class InventorySagaSubscriber implements OnModuleInit {
   private async onReleaseParts(payload: Record<string, unknown>): Promise<void> {
     const { workOrderId } = payload as unknown as WorkOrderRefPayload
     await this.releaseParts.execute(workOrderId)
-  }
-
-  private async onStartExecution(payload: Record<string, unknown>): Promise<void> {
-    const { workOrderId } = payload as unknown as WorkOrderRefPayload
-    await this.consumeParts.execute(workOrderId)
-    await this.bus.publish(SagaMessage.ExecutionCompleted, { workOrderId })
   }
 }
