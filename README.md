@@ -24,13 +24,27 @@ Services communicate through RabbitMQ events (async, over a shared `saga` topic 
 
 This service is a **participant** of the work order saga orchestrated by `work-order-service`. It consumes commands and replies with events:
 
-| Consumes (command) | Replies (event) |
+| Consumes (command) | Reacts by |
 |---|---|
-| `parts.reserve` | `parts.reserved` / `parts.reservation-failed` |
-| `parts.release` | — (compensation, idempotent) |
-| `execution.start` | `execution.completed` / `execution.failed` |
+| `parts.reserve` | Reserving stock and replying `parts.reserved` / `parts.reservation-failed` |
+| `parts.release` | Releasing the reservation (compensation, idempotent) |
+| `execution.start` | Creating an **execution queue entry** for the work order (status `QUEUED`) |
 
 It also exposes `GET /parts?ids=...`, consumed synchronously by `work-order-service` when opening a work order to snapshot part prices.
+
+## Execution lifecycle
+
+`execution.start` does not finish the repair on its own — it puts the work order in the **execution queue**. A mechanic then drives it through HTTP, and only on completion are the reserved parts consumed and the saga notified:
+
+| Endpoint | Effect |
+|---|---|
+| `GET /executions` / `GET /executions/:workOrderId` | Inspect the queue / a single execution with its diagnostics |
+| `POST /executions/:workOrderId/diagnostics` | Record a diagnostic finding (a flexible document) → `IN_DIAGNOSIS` |
+| `POST /executions/:workOrderId/start-repair` | → `IN_REPAIR` |
+| `POST /executions/:workOrderId/complete` | Consume the reserved parts and publish `execution.completed` → `COMPLETED` |
+| `POST /executions/:workOrderId/fail` | Publish `execution.failed` (triggers saga compensation) → `FAILED` |
+
+So a full run pauses at `IN_EXECUTION` (on the work order side) until the mechanic completes the execution here — analogous to how the flow pauses at `AWAITING_APPROVAL` until the customer approves the quote in `billing-service`.
 
 ## Requirements
 
