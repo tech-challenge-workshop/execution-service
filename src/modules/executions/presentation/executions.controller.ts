@@ -10,6 +10,8 @@ import {
   UseFilters,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Roles } from '../../../shared/auth/roles.decorator'
+import { UserRole } from '../../../shared/auth/jwt-payload'
 import { MESSAGE_BUS } from '../../../shared/messaging/message-bus'
 import type { MessageBus } from '../../../shared/messaging/message-bus'
 import { SagaMessage } from '../../../shared/messaging/saga-messages'
@@ -25,6 +27,7 @@ import { ExecutionExceptionFilter } from './filters/execution-exception.filter'
 
 @ApiTags('executions')
 @ApiBearerAuth()
+@Roles(UserRole.ADMIN)
 @UseFilters(ExecutionExceptionFilter)
 @Controller('executions')
 export class ExecutionsController {

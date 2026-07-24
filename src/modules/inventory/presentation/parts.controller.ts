@@ -13,6 +13,9 @@ import {
   UseFilters,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Public } from '../../../shared/auth/public.decorator'
+import { Roles } from '../../../shared/auth/roles.decorator'
+import { UserRole } from '../../../shared/auth/jwt-payload'
 import { CreatePartUseCase } from '../application/use-cases/create-part.use-case'
 import { DeletePartUseCase } from '../application/use-cases/delete-part.use-case'
 import { GetPartUseCase } from '../application/use-cases/get-part.use-case'
@@ -28,6 +31,7 @@ import { UpdatePartDto } from './dtos/update-part.dto'
 
 @ApiTags('parts')
 @ApiBearerAuth()
+@Roles(UserRole.ADMIN)
 @UseFilters(InventoryExceptionFilter)
 @Controller('parts')
 export class PartsController {
@@ -47,13 +51,17 @@ export class PartsController {
     return this.createPart.execute(dto)
   }
 
+  @Get('prices')
+  @Public()
+  @ApiOperation({ summary: 'Return part price snapshots for the given ids (service-to-service)' })
+  prices(@Query('ids') ids?: string) {
+    const parsed = (ids ?? '').split(',').filter((id) => id.length > 0)
+    return this.getPartPrices.execute(parsed)
+  }
+
   @Get()
-  @ApiOperation({ summary: 'List parts, or return price snapshots when ids is provided' })
+  @ApiOperation({ summary: 'List parts' })
   list(@Query() query: ListPartsQuery) {
-    if (query.ids !== undefined) {
-      const ids = query.ids.split(',').filter((id) => id.length > 0)
-      return this.getPartPrices.execute(ids)
-    }
     return this.listParts.execute(query)
   }
 

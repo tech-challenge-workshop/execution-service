@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { getConnectionToken } from '@nestjs/mongoose'
+import { JwtService } from '@nestjs/jwt'
 import { Connection } from 'mongoose'
 import request from 'supertest'
 import { App } from 'supertest/types'
@@ -12,6 +13,7 @@ const MISSING = '00000000-0000-4000-8000-000000000000'
 describe('Executions (e2e)', () => {
   let app: INestApplication<App>
   let connection: Connection
+  let bearer: string
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -25,6 +27,7 @@ describe('Executions (e2e)', () => {
     await app.init()
 
     connection = app.get<Connection>(getConnectionToken())
+    bearer = `Bearer ${app.get(JwtService).sign({ sub: 'e2e-admin', role: 'admin' })}`
   })
 
   beforeEach(async () => {
@@ -36,7 +39,13 @@ describe('Executions (e2e)', () => {
     await app.close()
   })
 
-  const http = () => request(app.getHttpServer())
+  const http = () => {
+    const server = app.getHttpServer()
+    return {
+      get: (url: string) => request(server).get(url).set('Authorization', bearer),
+      post: (url: string) => request(server).post(url).set('Authorization', bearer),
+    }
+  }
 
   async function seedQueued(): Promise<void> {
     const now = new Date()

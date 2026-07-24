@@ -22,9 +22,4 @@ export class ListPartsQuery {
   @IsOptional()
   @IsString()
   search?: string
-
-  @ApiPropertyOptional({ description: 'Comma-separated part ids; returns price snapshots' })
-  @IsOptional()
-  @IsString()
-  ids?: string
 }
