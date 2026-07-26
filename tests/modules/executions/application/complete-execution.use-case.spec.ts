@@ -2,7 +2,7 @@ import { ExecutionStatus } from '../../../../src/modules/executions/domain/execu
 import { ExecutionNotFoundError } from '../../../../src/modules/executions/domain/errors/execution.errors'
 import { ConsumePartsUseCase } from '../../../../src/modules/inventory/application/use-cases/consume-parts.use-case'
 import { CompleteExecutionUseCase } from '../../../../src/modules/executions/application/use-cases/complete-execution.use-case'
-import { FakeExecutionRepository, executionWith } from '../execution.fixtures'
+import { FakeExecutionRepository, FakeTracingPort, executionWith } from '../execution.fixtures'
 
 describe('CompleteExecutionUseCase', () => {
   let repository: FakeExecutionRepository
@@ -12,9 +12,11 @@ describe('CompleteExecutionUseCase', () => {
   beforeEach(() => {
     repository = new FakeExecutionRepository()
     consume = jest.fn().mockResolvedValue(undefined)
-    useCase = new CompleteExecutionUseCase(repository, {
-      execute: consume,
-    } as unknown as ConsumePartsUseCase)
+    useCase = new CompleteExecutionUseCase(
+      repository,
+      { execute: consume } as unknown as ConsumePartsUseCase,
+      new FakeTracingPort(),
+    )
   })
 
   it('completes the execution and consumes the reserved parts', async () => {

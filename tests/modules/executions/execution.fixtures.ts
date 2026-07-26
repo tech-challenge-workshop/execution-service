@@ -9,6 +9,7 @@ import type {
   ListExecutionsParams,
   PaginatedExecutions,
 } from '../../../src/modules/executions/application/ports/execution.repository'
+import type { TraceSpan, TracingPort } from '../../../src/shared/observability/tracing.port'
 
 export function executionWith(overrides: Partial<ExecutionProps> = {}): Execution {
   return Execution.restore({
@@ -48,5 +49,11 @@ export class FakeExecutionRepository implements ExecutionRepository {
       items: matches.slice(start, start + params.perPage),
       total: matches.length,
     })
+  }
+}
+
+export class FakeTracingPort implements TracingPort {
+  startSpan(): TraceSpan {
+    return { finish: () => undefined, error: () => undefined }
   }
 }
