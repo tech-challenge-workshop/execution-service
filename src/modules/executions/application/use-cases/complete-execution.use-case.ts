@@ -17,9 +17,8 @@ export class CompleteExecutionUseCase {
     private readonly tracing: TracingPort,
   ) {}
 
-  async execute(workOrderId: string): Promise<ExecutionOutput> {
-    const span = this.tracing.startSpan('execution.complete', { workOrderId })
-    try {
+  execute(workOrderId: string): Promise<ExecutionOutput> {
+    return this.tracing.withSpan('execution.complete', { workOrderId }, async () => {
       const execution = await this.executions.findByWorkOrderId(workOrderId)
       if (!execution) {
         throw new ExecutionNotFoundError(workOrderId)
@@ -30,11 +29,6 @@ export class CompleteExecutionUseCase {
       await this.consumeParts.execute(workOrderId)
 
       return toExecutionOutput(execution)
-    } catch (err) {
-      span.error(err as Error)
-      throw err
-    } finally {
-      span.finish()
-    }
+    })
   }
 }

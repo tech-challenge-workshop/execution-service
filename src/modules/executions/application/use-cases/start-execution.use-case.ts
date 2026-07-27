@@ -14,19 +14,13 @@ export class StartExecutionUseCase {
     private readonly tracing: TracingPort,
   ) {}
 
-  async execute(workOrderId: string): Promise<void> {
-    const span = this.tracing.startSpan('execution.start', { workOrderId })
-    try {
+  execute(workOrderId: string): Promise<void> {
+    return this.tracing.withSpan('execution.start', { workOrderId }, async () => {
       const existing = await this.executions.findByWorkOrderId(workOrderId)
       if (existing) {
         return
       }
       await this.executions.create(Execution.start(workOrderId))
-    } catch (err) {
-      span.error(err as Error)
-      throw err
-    } finally {
-      span.finish()
-    }
+    })
   }
 }
