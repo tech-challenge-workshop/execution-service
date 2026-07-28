@@ -136,19 +136,19 @@ Then create a part here (`POST /parts`), open a work order in work-order-service
 
 ## Deployment
 
-Kubernetes manifests (`Deployment`, `Service`, `ConfigMap`, `Secret`, `HPA`) live in [`tech-platform/k8s/execution-service`](https://github.com/tech-challenge-workshop/tech-platform/tree/main/k8s/execution-service). The AWS infrastructure behind them — VPC, EKS, DocumentDB, Amazon MQ — is OpenTofu in [`tech-platform/terraform`](https://github.com/tech-challenge-workshop/tech-platform/tree/main/terraform).
+Kubernetes manifests (`Deployment`, `Service`, `ConfigMap`, `Secret`, `HPA`) live in [`tech-platform/k8s/execution-service`](https://github.com/tech-challenge-workshop/tech-platform/tree/main/k8s/execution-service). The AWS infrastructure behind them — VPC, EKS, Amazon MQ — is OpenTofu in [`tech-platform/terraform`](https://github.com/tech-challenge-workshop/tech-platform/tree/main/terraform).
 
-The `Deployment` also carries an init container that downloads the Amazon RDS CA
-bundle, because DocumentDB enforces TLS with a certificate that is not publicly
-trusted. Keeping that out of the image is what lets the same image run against a
-plain MongoDB container locally.
+The document store is **MongoDB Atlas**, not DocumentDB: the AWS Free Plan
+refuses to provision DocumentDB at all. Atlas is still a managed database
+declared as code, and its M0 tier is free. Only the cluster's single NAT gateway
+address is allowed through its access list, so the database is reachable from
+the workloads and from nowhere else.
 
 **Why the manifests are not in this repository.** The four services are always
 deployed to the same cluster, behind the same Kong gateway, by the same
 pipeline. Keeping a `k8s/` directory per repository would duplicate the
-namespace, the `Gateway`, the `HTTPRoute` set, the Kong plugins and the Datadog
-values four times over, and those copies would drift the first time a route
-changed. Centralising them keeps one kustomize tree that renders the whole
+namespace, the Kong ingresses and plugins and the Datadog values four times
+over, and those copies would drift the first time a route changed. Centralising them keeps one kustomize tree that renders the whole
 platform and is validated by `kubeconform` on every pull request. The trade-off
 is deliberate: this repository owns its application and its image, the platform
 repository owns how the platform is assembled.
