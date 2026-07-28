@@ -2,13 +2,15 @@
 
 Execution, production and parts-inventory service for a vehicle repair shop platform — FIAP SOAT Tech Challenge (Phase 4).
 
-One of three independent microservices:
+One of four independent services:
 
 | Service | Responsibility |
 |---|---|
-| work-order-service | Customers, vehicles, service catalog, work order lifecycle, saga orchestration |
-| billing-service | Quotes and payments (Mercado Pago) |
+| [work-order-service](https://github.com/tech-challenge-workshop/work-order-service) | Customers, vehicles, service catalog, work order lifecycle, saga orchestration |
+| [billing-service](https://github.com/tech-challenge-workshop/billing-service) | Quotes and payments (Mercado Pago) |
 | **execution-service** (this repo) | Parts inventory and stock control, repair execution, diagnostics |
+| [auth-service](https://github.com/tech-challenge-workshop/auth-service) | Issues the JWTs this service validates |
+| [tech-platform](https://github.com/tech-challenge-workshop/tech-platform) | Kong gateway, Datadog agent, Kubernetes manifests, OpenTofu |
 
 Services communicate through RabbitMQ events (async, over a shared `saga` topic exchange) and REST (sync, only when strictly needed). Each service owns its database — no service touches another service's data store.
 
@@ -17,7 +19,8 @@ Services communicate through RabbitMQ events (async, over a shared `saga` topic 
 - [NestJS 11](https://nestjs.com/) + TypeScript — HTTP API plus a RabbitMQ **message bus** (topic exchange) in a single process
 - [MongoDB](https://www.mongodb.com/) via [Mongoose](https://mongoosejs.com/) — fulfils the challenge's NoSQL requirement
 - RabbitMQ for asynchronous messaging (saga participant)
-- Zod for environment validation, class-validator for HTTP DTOs
+- `@nestjs/jwt` for token verification, Zod for environment validation, class-validator for HTTP DTOs
+- `dd-trace` for Datadog APM, with structured JSON logs correlated by trace id
 - Jest (unit + e2e), Swagger for API docs
 
 ## Role in the saga
@@ -30,7 +33,7 @@ This service is a **participant** of the work order saga orchestrated by `work-o
 | `parts.release` | Releasing the reservation (compensation, idempotent) |
 | `execution.start` | Creating an **execution queue entry** for the work order (status `QUEUED`) |
 
-It also exposes `GET /parts?ids=...`, consumed synchronously by `work-order-service` when opening a work order to snapshot part prices.
+It also exposes `GET /parts/prices?ids=`, consumed synchronously by `work-order-service` when opening a work order to snapshot part prices.
 
 ## Execution lifecycle
 
@@ -45,6 +48,31 @@ It also exposes `GET /parts?ids=...`, consumed synchronously by `work-order-serv
 | `POST /executions/:workOrderId/fail` | Publish `execution.failed` (triggers saga compensation) → `FAILED` |
 
 So a full run pauses at `IN_EXECUTION` (on the work order side) until the mechanic completes the execution here — analogous to how the flow pauses at `AWAITING_APPROVAL` until the customer approves the quote in `billing-service`.
+
+## Authentication
+
+This service **validates** tokens, it never issues them — that is `auth-service`'s job. Both share the same HS256 `JWT_SECRET`.
+
+Two guards are registered globally via `APP_GUARD`: `JwtAuthGuard` verifies the bearer token, then `RolesGuard` enforces `@Roles(...)`. A route marked `@Public()` skips both.
+
+| Route | Role |
+|---|---|
+| `/parts` (CRUD, `:id/restock`) | `admin` |
+| `GET /parts/prices?ids=` | **public** — service-to-service price snapshot for `work-order-service` |
+| `/executions` (queue, diagnostics, start-repair, complete, fail) | `admin` |
+| `GET /health` | **public** |
+
+`GET /parts/prices` is public on purpose: it is an internal call from `work-order-service` while opening an order, before any user token exists in that flow. It returns prices only — no stock levels, no reservations. In production it is reachable only from inside the cluster; Kong exposes it without the `jwt` plugin but the route is not part of the public product surface.
+
+## Business rules worth knowing
+
+**Reservation.** `parts.reserve` succeeds only if every requested part has enough available quantity; otherwise it replies `parts.reservation-failed` and the saga compensates. A reservation moves quantity from available to reserved — it does not decrement stock.
+
+**Release.** `parts.release` returns reserved quantity to available. It is idempotent, because saga messages can be redelivered.
+
+**Consumption.** Only `POST /executions/:workOrderId/complete` actually decrements stock, converting the reservation into a permanent deduction.
+
+**Prices in cents.** `priceCents` is an integer everywhere, matching the service catalog in `work-order-service`.
 
 ## Requirements
 
@@ -65,13 +93,13 @@ pnpm start:dev                # http://localhost:3002
 | Swagger UI | http://localhost:3002/docs |
 | Health check | http://localhost:3002/health |
 
-> **RabbitMQ dependency:** this service's `docker-compose.yml` starts **only MongoDB**. The RabbitMQ broker lives in `work-order-service`'s compose and is shared by both services. Start `work-order-service`'s containers (`docker compose up -d` there) before running this service, otherwise the message bus has nothing to connect to. Both services point at `amqp://…@localhost:5672` by default.
+> **RabbitMQ dependency:** this service's `docker-compose.yml` starts **only MongoDB**. The RabbitMQ broker lives in `work-order-service`'s compose and is shared by every service. Start `work-order-service`'s containers first, otherwise the message bus has nothing to connect to.
 
-The parts REST API (`/parts`, CRUD + `GET /parts?ids=`) works standalone. The saga behaviour (reserve/release/consume) is exercised by messages from `work-order-service` — see the full walkthrough below.
+The parts REST API works standalone (with an admin token). The saga behaviour — reserve, release, consume — is exercised by messages from `work-order-service`.
 
 ## Run the full system (distributed saga demo)
 
-The end-to-end saga — open a work order → reserve stock here → quote/payment → consume stock here → finish — is documented as a step-by-step walkthrough in the **work-order-service README** ("Run the full system"). In short:
+The end-to-end saga is documented step by step in the **work-order-service README** ("Run the full system"), including how to obtain the admin and customer tokens that every protected route now requires. In short:
 
 ```bash
 # terminal 1 — work-order-service
@@ -79,12 +107,28 @@ docker compose up -d          # Postgres + RabbitMQ (shared broker)
 npx prisma migrate dev
 pnpm start:dev                # port 3000
 
-# terminal 2 — execution-service (this repo)
+# terminal 2 — billing-service
+docker compose up -d && npx prisma migrate dev && pnpm start:dev   # port 3001
+
+# terminal 3 — execution-service (this repo)
 docker compose up -d          # MongoDB
 pnpm start:dev                # port 3002
+
+# terminal 4 — auth-service
+pnpm start:dev                # port 3003
 ```
 
-Then create a part here (`POST /parts`), open a work order in work-order-service referencing it, and watch the part's `availableQuantity` / `reservedQuantity` change as the saga reserves and later consumes the stock.
+Then create a part here (`POST /parts`), open a work order in work-order-service referencing it, and watch `availableQuantity` / `reservedQuantity` change as the saga reserves and later consumes the stock.
+
+## Observability
+
+`dd-trace` reports APM traces to the Datadog Agent that `tech-platform`'s compose provides on `localhost:8126`. Application logs are JSON and carry `dd.trace_id` / `dd.span_id`. Saga message handlers are wrapped in custom spans through `TracingPort.withSpan()`, so a reservation appears inside the same distributed trace as the work order that triggered it.
+
+## Deployment
+
+Kubernetes manifests (`Deployment`, `Service`, `ConfigMap`, `HPA`) live in [`tech-platform/k8s/execution-service`](https://github.com/tech-challenge-workshop/tech-platform/tree/main/k8s/execution-service). The AWS infrastructure behind them — VPC, EKS, DocumentDB, Amazon MQ — is OpenTofu in [`tech-platform/terraform`](https://github.com/tech-challenge-workshop/tech-platform/tree/main/terraform).
+
+CI builds and pushes the image to `ghcr.io/tech-challenge-workshop/execution-service` on every push to `main`.
 
 ## Scripts
 
@@ -95,6 +139,7 @@ Then create a part here (`POST /parts`), open a work order in work-order-service
 | `pnpm test` | Unit tests |
 | `pnpm test:cov` | Unit tests with coverage (minimum 80%) |
 | `pnpm test:e2e` | End-to-end tests (requires `docker compose up -d`) |
+| `pnpm test:ci` | Combined unit + e2e coverage — the gate CI enforces |
 | `pnpm lint` / `pnpm lint:check` | ESLint with/without autofix |
 
 ## Docker
