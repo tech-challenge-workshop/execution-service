@@ -50,6 +50,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Fails on a known CVE in the dependency tree. Runs before the tests so a
+      # vulnerable dependency stops the pipeline early rather than after a build.
+      - run: pnpm audit --audit-level=high
       - run: pnpm lint:check
       - run: pnpm build
       - run: pnpm test:ci
