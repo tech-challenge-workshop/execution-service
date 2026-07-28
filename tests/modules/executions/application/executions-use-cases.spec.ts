@@ -6,7 +6,7 @@ import { StartRepairUseCase } from '../../../../src/modules/executions/applicati
 import { FailExecutionUseCase } from '../../../../src/modules/executions/application/use-cases/fail-execution.use-case'
 import { GetExecutionUseCase } from '../../../../src/modules/executions/application/use-cases/get-execution.use-case'
 import { ListExecutionsUseCase } from '../../../../src/modules/executions/application/use-cases/list-executions.use-case'
-import { FakeExecutionRepository, executionWith } from '../execution.fixtures'
+import { FakeExecutionRepository, FakeTracingPort, executionWith } from '../execution.fixtures'
 
 describe('Execution use cases', () => {
   let repository: FakeExecutionRepository
@@ -16,7 +16,7 @@ describe('Execution use cases', () => {
   })
 
   it('starts an execution and is idempotent', async () => {
-    const useCase = new StartExecutionUseCase(repository)
+    const useCase = new StartExecutionUseCase(repository, new FakeTracingPort())
     await useCase.execute('wo-1')
     await useCase.execute('wo-1')
 
