@@ -30,7 +30,7 @@
     "@nestjs/microservices": "11.1.28",
     "@nestjs/mongoose": "11.0.4",
     "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/swagger": "11.4.6",
+    "@nestjs/swagger": "11.4.5",
     "amqp-connection-manager": "5.0.0",
     "amqplib": "2.0.1",
     "class-transformer": "0.5.1",
